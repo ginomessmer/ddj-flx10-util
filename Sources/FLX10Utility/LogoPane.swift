@@ -6,6 +6,7 @@ struct LogoPane: View {
     @State private var isDropTargeted = false
     @State private var dragStartOffset: CGPoint?
     @State private var pinchStartZoom: Double?
+    @State private var isShowingPlayground = false
 
     var body: some View {
         @Bindable var model = model
@@ -45,6 +46,18 @@ struct LogoPane: View {
                 .help("Choose an image (⌘O)")
                 .disabled(model.isLogoBusy)
 
+                IfImagePlaygroundAvailable {
+                    Button {
+                        isShowingPlayground = true
+                    } label: {
+                        Label("Create with Image Playground", systemImage: "apple.image.playground")
+                    }
+                    .help(model.logoSource == nil
+                          ? "Create a logo with Image Playground"
+                          : "Create a new logo from this one with Image Playground")
+                    .disabled(model.isLogoBusy)
+                }
+
                 Button {
                     model.isConfirmingLogoRemoval = true
                 } label: {
@@ -62,6 +75,9 @@ struct LogoPane: View {
         } message: {
             Text("The image saved on the controller will be deleted.")
         }
+        .logoImagePlaygroundSheet(isPresented: $isShowingPlayground, sourceImage: model.logoSource) { url in
+            model.loadGeneratedImage(from: url)
+        }
     }
 
     // MARK: Empty state
@@ -70,10 +86,20 @@ struct LogoPane: View {
         ContentUnavailableView {
             Label("Add Your DJ Logo", systemImage: "photo.on.rectangle.angled")
         } description: {
-            Text("Drag an image here or choose one. It’s shown on the jog displays when DJ LOGO DISPLAY is turned on.")
+            Text("Drag an image here, choose one, or create one. It’s shown on the jog displays when DJ LOGO DISPLAY is turned on.")
         } actions: {
-            Button("Choose Image…") { model.chooseImage() }
-                .controlSize(.large)
+            HStack {
+                Button("Choose Image…") { model.chooseImage() }
+                IfImagePlaygroundAvailable {
+                    Button {
+                        isShowingPlayground = true
+                    } label: {
+                        Label("Image Playground…", systemImage: "apple.image.playground")
+                    }
+                    .help("Create a logo with Image Playground")
+                }
+            }
+            .controlSize(.large)
         }
         .frame(maxWidth: 420)
     }

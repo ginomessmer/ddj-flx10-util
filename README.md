@@ -10,7 +10,8 @@ replaces both of the vendor's macOS tools in one native SwiftUI app:
 * **DDJ-FLX10 Setup** — jog ring color, time display, virtual deck mode, slip mode, Fader Start
   sync and REC OUT options
 * **DDJ-FLX10 Image Transfer Tool** — upload or remove the custom DJ logo shown on the jog displays,
-  with a small editor to fit the whole image or fill the display and pick the crop
+  with a small editor to fit the whole image or fill the display and pick the crop. On Macs with
+  Apple Intelligence (macOS 15.1+), logos can also be created with Image Playground
 
 It needs neither the vendor's `DDJ-FLX10Setup.framework` nor its `AutoLauncherd` background agent.
 

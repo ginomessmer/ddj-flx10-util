@@ -188,6 +188,20 @@ final class AppModel {
         }
     }
 
+    /// Loads an image created with Image Playground.
+    func loadGeneratedImage(from url: URL) {
+        guard !isLogoBusy else { return }
+        do {
+            logoSource = try LogoImageEncoder.loadGeneratedImage(at: url)
+            logoFileName = "Image Playground"
+            logoActivity = .idle
+            logoLayout = .fit
+            renderLogo()
+        } catch {
+            alert = Alert(title: "The Generated Image Can’t Be Used", message: error.localizedDescription)
+        }
+    }
+
     /// True when the source isn't square, so Fit and Fill differ.
     var logoHasLayoutChoice: Bool {
         guard let logoSource else { return false }

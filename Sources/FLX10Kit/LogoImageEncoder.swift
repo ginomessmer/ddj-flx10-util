@@ -54,6 +54,14 @@ public enum LogoImageEncoder {
         try encode(image: loadImage(at: url), layout: layout)
     }
 
+    /// Decodes any ImageIO-readable file, e.g. HEIC from Image Playground, without the user-facing
+    /// format and size checks.
+    public static func loadGeneratedImage(at url: URL) throws -> CGImage {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = orientedImage(from: source) else { throw EncodingError.unreadable }
+        return image
+    }
+
     /// Validates and decodes a source file (first frame, EXIF orientation applied).
     public static func loadImage(at url: URL) throws -> CGImage {
         guard let limit = sourceLimits[url.pathExtension.lowercased()] else { throw EncodingError.unsupportedFormat }
