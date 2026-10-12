@@ -33,6 +33,11 @@ final class AppModel {
     private(set) var logoFileName: String?
     private(set) var logoActivity: LogoActivity = .idle
     private(set) var logoJPEG: Data?
+    /// The decoded source image, kept so the layout can be changed after choosing it.
+    private(set) var logoSource: CGImage?
+    var logoLayout: LogoLayout = .fit {
+        didSet { if logoLayout != oldValue { renderLogo() } }
+    }
 
     // MARK: Navigation
 
@@ -170,14 +175,33 @@ final class AppModel {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         do {
-            let result = try LogoImageEncoder.encode(fileAt: url)
-            logoPreview = result.preview
-            logoJPEG = result.jpegData
+            let image = try LogoImageEncoder.loadImage(at: url)
+            logoSource = image
             logoFileName = url.lastPathComponent
             logoActivity = .idle
+            // Square images look the same either way; otherwise start with the original's Fit.
+            logoLayout = .fit
+            renderLogo()
             NSDocumentController.shared.noteNewRecentDocumentURL(url)
         } catch {
             alert = Alert(title: "“\(url.lastPathComponent)” Can’t Be Used", message: error.localizedDescription)
+        }
+    }
+
+    /// True when the source isn't square, so Fit and Fill differ.
+    var logoHasLayoutChoice: Bool {
+        guard let logoSource else { return false }
+        return logoSource.width != logoSource.height
+    }
+
+    private func renderLogo() {
+        guard let logoSource else { return }
+        do {
+            let result = try LogoImageEncoder.encode(image: logoSource, layout: logoLayout)
+            logoPreview = result.preview
+            logoJPEG = result.jpegData
+        } catch {
+            alert = Alert(title: "The Image Can’t Be Used", message: error.localizedDescription)
         }
     }
 
@@ -185,6 +209,8 @@ final class AppModel {
         guard !isLogoBusy else { return }
         logoPreview = nil
         logoJPEG = nil
+        logoSource = nil
+        logoLayout = .fit
         logoFileName = nil
         logoActivity = .idle
     }
@@ -286,17 +312,18 @@ final class AppModel {
     // MARK: Previews
 
     /// A model that never touches IOKit, for SwiftUI previews.
-    static func preview(connected: Bool = true, software: DJSoftware = .seratoDJPro, withLogo: Bool = false) -> AppModel {
+    static func preview(connected: Bool = true, software: DJSoftware = .seratoDJPro, withLogo: Bool = false, layout: LogoLayout = .fit) -> AppModel {
         let model = AppModel(startDevices: false)
         model.settings = ControllerSettings()
         model.isConnected = connected
         model.logoInterfaceAvailable = connected
         model.firmwareVersion = connected ? "1.05" : nil
         model.settings.software = software
-        if withLogo, let result = try? LogoImageEncoder.encode(image: previewArtwork()) {
-            model.logoPreview = result.preview
-            model.logoJPEG = result.jpegData
+        if withLogo {
+            model.logoSource = previewArtwork()
             model.logoFileName = "My Logo.png"
+            model.logoLayout = layout
+            model.renderLogo()
         }
         return model
     }

@@ -186,3 +186,59 @@ final class ControllerSettingsTests: XCTestCase {
         XCTAssertEqual(USBControlClient.formatFirmware([0x02, 0x1A]), "2.1a")
     }
 }
+
+final class LogoLayoutTests: XCTestCase {
+    func testFillCoversCanvasAndCentres() {
+        let rect = LogoImageEncoder.fillRect(imageWidth: 480, imageHeight: 240, side: 240, zoom: 1, offset: .zero)
+        XCTAssertEqual(rect, CGRect(x: -120, y: 0, width: 480, height: 240))
+    }
+
+    func testFillOffsetAlignsEdges() {
+        // offset.x = 1 moves the image right until its left edge meets the canvas edge.
+        let right = LogoImageEncoder.fillRect(imageWidth: 480, imageHeight: 240, side: 240, zoom: 1, offset: CGPoint(x: 1, y: 0))
+        XCTAssertEqual(right.minX, 0)
+        let left = LogoImageEncoder.fillRect(imageWidth: 480, imageHeight: 240, side: 240, zoom: 1, offset: CGPoint(x: -1, y: 0))
+        XCTAssertEqual(left.maxX, 240)
+        // Screen-down (positive y) lowers the image, i.e. smaller CoreGraphics y.
+        let down = LogoImageEncoder.fillRect(imageWidth: 240, imageHeight: 480, side: 240, zoom: 1, offset: CGPoint(x: 0, y: 1))
+        XCTAssertEqual(down.maxY, 240)
+    }
+
+    func testFillZoom() {
+        let rect = LogoImageEncoder.fillRect(imageWidth: 240, imageHeight: 240, side: 240, zoom: 2, offset: .zero)
+        XCTAssertEqual(rect, CGRect(x: -120, y: -120, width: 480, height: 480))
+    }
+
+    func testLayoutClamps() {
+        var layout = LogoLayout(mode: .fill, zoom: 10, offset: CGPoint(x: 3, y: -3))
+        XCTAssertEqual(layout.zoom, LogoLayout.maxZoom)
+        XCTAssertEqual(layout.offset, CGPoint(x: 1, y: -1))
+        layout.zoom = 0.2
+        XCTAssertEqual(layout.zoom, 1)
+    }
+
+    func testDragConvertsToOffset() {
+        let layout = LogoLayout(mode: .fill)
+        // 480×240 at zoom 1 overflows by 240pt horizontally; dragging 120pt is half of it → 1.0.
+        let offset = layout.offset(afterDragging: CGSize(width: 120, height: 50), from: .zero,
+                                   imageWidth: 480, imageHeight: 240, canvasSide: 240)
+        XCTAssertEqual(offset.x, 1, accuracy: 0.0001)
+        XCTAssertEqual(offset.y, 0, "No vertical overflow, so vertical drag is ignored")
+    }
+
+    func testFillLeavesNoLetterbox() throws {
+        let context = CGContext(data: nil, width: 400, height: 100, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 400, height: 100))
+        let source = context.makeImage()!
+
+        func topLeftBrightness(_ layout: LogoLayout) -> UInt8 {
+            let image = LogoImageEncoder.render(source, layout: layout)!
+            let data = image.dataProvider!.data! as Data
+            return data[0]
+        }
+        XCTAssertEqual(topLeftBrightness(.fit), 0, "Fit letterboxes with black")
+        XCTAssertGreaterThan(topLeftBrightness(LogoLayout(mode: .fill)), 200, "Fill covers the canvas")
+    }
+}

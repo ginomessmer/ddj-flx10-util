@@ -50,17 +50,22 @@ public enum LogoImageEncoder {
         sourceLimits[url.pathExtension.lowercased()] != nil
     }
 
-    public static func encode(fileAt url: URL) throws -> Result {
+    public static func encode(fileAt url: URL, layout: LogoLayout = .fit) throws -> Result {
+        try encode(image: loadImage(at: url), layout: layout)
+    }
+
+    /// Validates and decodes a source file (first frame, EXIF orientation applied).
+    public static func loadImage(at url: URL) throws -> CGImage {
         guard let limit = sourceLimits[url.pathExtension.lowercased()] else { throw EncodingError.unsupportedFormat }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         guard size <= limit else { throw EncodingError.sourceTooLarge }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = orientedImage(from: source) else { throw EncodingError.unreadable }
-        return try encode(image: image)
+        return image
     }
 
-    public static func encode(image: CGImage) throws -> Result {
-        guard let canvas = render(image) else { throw EncodingError.unreadable }
+    public static func encode(image: CGImage, layout: LogoLayout = .fit) throws -> Result {
+        guard let canvas = render(image, layout: layout) else { throw EncodingError.unreadable }
         // Design choice: the original gives up when the quality-1.0 JPEG exceeds the buffer; we step
         // the quality down instead. A 240×240 JPEG at 1.0 is normally far below the limit.
         for quality in [1.0, 0.95, 0.9, 0.8, 0.7] {
@@ -87,9 +92,8 @@ public enum LogoImageEncoder {
             ?? CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
-    /// Aspect-fits `image` onto a black square canvas, centred, matching the original's
-    /// truncating integer arithmetic.
-    static func render(_ image: CGImage) -> CGImage? {
+    /// Draws `image` onto a black square canvas according to `layout`.
+    public static func render(_ image: CGImage, layout: LogoLayout = .fit) -> CGImage? {
         let side = LogoProtocol.displaySize
         guard let context = CGContext(
             data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
@@ -99,10 +103,16 @@ public enum LogoImageEncoder {
         context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: side, height: side))
 
-        let fit = fitRect(imageWidth: image.width, imageHeight: image.height, side: side)
+        let rect: CGRect
+        switch layout.mode {
+        case .fit:
+            rect = fitRect(imageWidth: image.width, imageHeight: image.height, side: side)
+        case .fill:
+            rect = fillRect(imageWidth: image.width, imageHeight: image.height, side: side,
+                            zoom: layout.zoom, offset: layout.offset)
+        }
         context.interpolationQuality = .high
-        // CoreGraphics' origin is bottom-left; the centred rect is symmetric so y needs no flip.
-        context.draw(image, in: fit)
+        context.draw(image, in: rect)
         return context.makeImage()
     }
 
@@ -117,6 +127,22 @@ public enum LogoImageEncoder {
             let width = Int(scaleY * Float(imageWidth))
             return CGRect(x: (side - width) / 2, y: 0, width: width, height: side)
         }
+    }
+
+    /// Covers the canvas (cropping the overflow), scaled by `zoom` (≥ 1).
+    ///
+    /// `offset` is in the -1...1 range per axis in screen orientation (positive x moves the image
+    /// right, positive y moves it down) and spans the full overflow, so ±1 aligns an image edge with
+    /// the canvas edge. Returned in CoreGraphics coordinates (origin bottom-left).
+    static func fillRect(imageWidth: Int, imageHeight: Int, side: Int, zoom: Double, offset: CGPoint) -> CGRect {
+        guard imageWidth > 0, imageHeight > 0 else { return .zero }
+        let canvas = Double(side)
+        let scale = max(canvas / Double(imageWidth), canvas / Double(imageHeight)) * max(zoom, 1)
+        let width = Double(imageWidth) * scale
+        let height = Double(imageHeight) * scale
+        let dx = min(max(offset.x, -1), 1) * (width - canvas) / 2
+        let dy = min(max(offset.y, -1), 1) * (height - canvas) / 2
+        return CGRect(x: (canvas - width) / 2 + dx, y: (canvas - height) / 2 - dy, width: width, height: height)
     }
 
     static func jpegData(_ image: CGImage, quality: Double) -> Data? {

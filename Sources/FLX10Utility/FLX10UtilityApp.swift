@@ -10,8 +10,9 @@ struct FLX10UtilityApp: App {
     init() {
         #if DEBUG
         // FLX10_SNAPSHOT_DEMO=1 renders snapshots from the preview model (connected, sample logo).
-        if ProcessInfo.processInfo.environment["FLX10_SNAPSHOT_DEMO"] != nil {
-            _model = State(initialValue: .preview(withLogo: true))
+        if let demo = ProcessInfo.processInfo.environment["FLX10_SNAPSHOT_DEMO"] {
+            let layout = demo == "fill" ? LogoLayout(mode: .fill, zoom: 1.3, offset: CGPoint(x: -0.4, y: 0)) : .fit
+            _model = State(initialValue: .preview(withLogo: true, layout: layout))
             return
         }
         #endif
