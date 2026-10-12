@@ -13,7 +13,12 @@ A single native macOS app (SwiftUI, universal binary, macOS 13+) that replaces b
 open "build/FLX10 Utility.app"
 ```
 
-For development, use `swift run FLX10Utility` and `swift test`.
+For development, use `swift run FLX10Utility` and `swift test`, or generate an Xcode project with
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) (the `.xcodeproj` is generated, not committed):
+
+```bash
+xcodegen generate && open FLX10Utility.xcodeproj
+```
 
 ## Layout
 

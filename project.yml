@@ -1,0 +1,72 @@
+name: FLX10Utility
+options:
+  bundleIdPrefix: dev.ginomessmer
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+# FLX10Kit and the CFLX10USB shim come from the local Swift package, so `swift build` and Xcode
+# compile the same sources.
+packages:
+  FLX10Kit:
+    path: .
+
+targets:
+  FLX10Utility:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/FLX10Utility
+    dependencies:
+      - package: FLX10Kit
+        product: FLX10Kit
+    settings:
+      base:
+        # Shared with scripts/build-app.sh, so it holds literal values rather than $(…) build settings.
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_NAME: FLX10Utility
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ginomessmer.flx10-utility
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        # IOKit USB/HID access to the controller is not permitted inside the App Sandbox.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: YES
+
+  FLX10KitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/FLX10KitTests
+    dependencies:
+      - package: FLX10Kit
+        product: FLX10Kit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ginomessmer.flx10-utility.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # The XCTest shipped with current Xcode is built for macOS 14.
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+schemes:
+  FLX10Utility:
+    build:
+      targets:
+        FLX10Utility: all
+        FLX10KitTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - FLX10KitTests
+    archive:
+      config: Release
