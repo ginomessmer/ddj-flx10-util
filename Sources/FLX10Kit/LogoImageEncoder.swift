@@ -42,6 +42,10 @@ public enum LogoImageEncoder {
 
     public static var supportedExtensions: [String] { sourceLimits.keys.sorted() }
 
+    public static var supportedTypes: [UTType] {
+        supportedExtensions.compactMap { UTType(filenameExtension: $0) }
+    }
+
     public static func isSupported(_ url: URL) -> Bool {
         sourceLimits[url.pathExtension.lowercased()] != nil
     }

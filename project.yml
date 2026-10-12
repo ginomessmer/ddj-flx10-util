@@ -2,14 +2,14 @@ name: FLX10Utility
 options:
   bundleIdPrefix: dev.ginomessmer
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "14.0"
   createIntermediateGroups: true
   generateEmptyDirectories: false
 
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 # FLX10Kit and the CFLX10USB shim come from the local Swift package, so `swift build` and Xcode
 # compile the same sources.
@@ -23,6 +23,8 @@ targets:
     platform: macOS
     sources:
       - path: Sources/FLX10Utility
+      - path: Resources/AppIcon.icns
+        buildPhase: resources
     dependencies:
       - package: FLX10Kit
         product: FLX10Kit
@@ -53,8 +55,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.ginomessmer.flx10-utility.tests
         GENERATE_INFOPLIST_FILE: YES
-        # The XCTest shipped with current Xcode is built for macOS 14.
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 schemes:
   FLX10Utility:

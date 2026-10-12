@@ -1,47 +1,71 @@
 import AppKit
-import Combine
 import FLX10Kit
 import Foundation
+import Observation
 
+@Observable
 @MainActor
-final class AppModel: ObservableObject {
-    enum Status: Equatable {
-        case none
-        case info(String)
-        case success(String)
-        case error(String)
+final class AppModel {
+    struct Alert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+        var retry: (() -> Void)?
     }
 
-    @Published private(set) var isConnected = false
-    @Published private(set) var firmwareVersion: String?
+    enum LogoActivity: Equatable {
+        case idle
+        case transferring(progress: Double)
+        case deleting
+        case succeeded(String)
+    }
+
+    // MARK: Device
+
+    private(set) var isConnected = false
+    private(set) var firmwareVersion: String?
     /// The vendor HID interface used for logo transfer is present.
-    @Published private(set) var logoInterfaceAvailable = false
+    private(set) var logoInterfaceAvailable = false
 
-    @Published private(set) var logoPreview: CGImage?
-    @Published private(set) var logoFileName: String?
-    @Published private(set) var logoStatus: Status = .none
-    @Published private(set) var transferProgress: Double?
-    @Published private(set) var isLogoBusy = false
+    // MARK: Logo
 
-    @Published var settings: ControllerSettings {
+    private(set) var logoPreview: CGImage?
+    private(set) var logoFileName: String?
+    private(set) var logoActivity: LogoActivity = .idle
+    private(set) var logoJPEG: Data?
+
+    // MARK: Navigation
+
+    var selectedPane: Pane? = .logo
+
+    // MARK: Settings
+
+    var settings: ControllerSettings {
         didSet { settingsChanged(from: oldValue) }
     }
-    @Published private(set) var settingsStatus: Status = .none
-    @Published var applySettingsOnConnect: Bool {
-        didSet { UserDefaults.standard.set(applySettingsOnConnect, forKey: Self.applyOnConnectKey) }
+
+    var applySettingsOnConnect: Bool {
+        didSet { if isLive { UserDefaults.standard.set(applySettingsOnConnect, forKey: Self.applyOnConnectKey) } }
     }
+
+    var alert: Alert?
+    var isConfirmingLogoRemoval = false
 
     private static let applyOnConnectKey = "applySettingsOnConnect"
 
-    private let transport = HIDLogoTransport()
-    private let logoService: LogoTransferService
-    private let usb = USBControlClient()
-    private let store = SettingsStore()
-    private let usbQueue = DispatchQueue(label: "FLX10Utility.usb", qos: .userInitiated)
-    private var logoJPEG: Data?
-    private var presenceTimer: Timer?
+    @ObservationIgnored private let transport = HIDLogoTransport()
+    @ObservationIgnored private let logoService: LogoTransferService
+    @ObservationIgnored private let usb = USBControlClient()
+    @ObservationIgnored private let store = SettingsStore()
+    @ObservationIgnored private let usbQueue = DispatchQueue(label: "FLX10Utility.usb", qos: .userInitiated)
+    @ObservationIgnored private var presenceTimer: Timer?
+    @ObservationIgnored private var successReset: DispatchWorkItem?
 
-    init() {
+    /// False for previews: no IOKit, no persistence.
+    @ObservationIgnored private let isLive: Bool
+
+    init(startDevices: Bool = true) {
+        isLive = startDevices
         settings = store.load()
         applySettingsOnConnect = UserDefaults.standard.object(forKey: Self.applyOnConnectKey) as? Bool ?? true
         logoService = LogoTransferService(transport: transport)
@@ -53,11 +77,15 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated { self?.logoService.handle(inputReport: report) }
         }
         logoService.onProgress = { [weak self] progress in
-            MainActor.assumeIsolated { self?.transferProgress = progress }
+            MainActor.assumeIsolated {
+                guard let self, case .transferring = self.logoActivity else { return }
+                self.logoActivity = .transferring(progress: progress)
+            }
         }
         logoService.onOutcome = { [weak self] outcome in
             MainActor.assumeIsolated { self?.finish(outcome) }
         }
+        guard startDevices else { return }
         transport.start()
 
         // HID callbacks cover the logo interface; poll the USB device too so settings work even if
@@ -69,6 +97,12 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: Connection
+
+    var connectionDescription: String {
+        guard isConnected else { return "Not Connected" }
+        if let firmwareVersion { return "Connected · Firmware \(firmwareVersion)" }
+        return "Connected"
+    }
 
     private func refreshConnection() {
         let hid = transport.isConnected
@@ -87,7 +121,7 @@ final class AppModel: ObservableObject {
         isConnected = connected
         if connected {
             readFirmware()
-            if applySettingsOnConnect { applyAllSettings(announce: false) }
+            if applySettingsOnConnect { sendAllSettings(reportSuccess: false) }
         } else {
             firmwareVersion = nil
             logoService.deviceDisconnected()
@@ -106,64 +140,126 @@ final class AppModel: ObservableObject {
 
     // MARK: Logo
 
+    var isLogoBusy: Bool {
+        switch logoActivity {
+        case .transferring, .deleting: return true
+        case .idle, .succeeded: return false
+        }
+    }
+
+    var hasLogo: Bool { logoJPEG != nil }
+    var canSendLogo: Bool { isConnected && logoInterfaceAvailable && hasLogo && !isLogoBusy }
+    var canDeleteLogo: Bool { isConnected && logoInterfaceAvailable && !isLogoBusy }
+
+    func chooseImage() {
+        selectedPane = .logo
+        let panel = NSOpenPanel()
+        panel.title = "Choose a DJ Logo"
+        panel.message = "Choose a BMP, JPEG, PNG or GIF image."
+        panel.prompt = "Choose"
+        panel.allowedContentTypes = LogoImageEncoder.supportedTypes
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            loadImage(from: url)
+        }
+    }
+
     func loadImage(from url: URL) {
         guard !isLogoBusy else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         do {
             let result = try LogoImageEncoder.encode(fileAt: url)
             logoPreview = result.preview
             logoJPEG = result.jpegData
             logoFileName = url.lastPathComponent
-            logoStatus = .none
+            logoActivity = .idle
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
         } catch {
-            logoStatus = .error(error.localizedDescription)
+            alert = Alert(title: "“\(url.lastPathComponent)” Can’t Be Used", message: error.localizedDescription)
         }
     }
 
-    var canTransfer: Bool { isConnected && logoJPEG != nil && !isLogoBusy && logoInterfaceAvailable }
-    var canDelete: Bool { isConnected && !isLogoBusy && logoInterfaceAvailable }
+    func clearImage() {
+        guard !isLogoBusy else { return }
+        logoPreview = nil
+        logoJPEG = nil
+        logoFileName = nil
+        logoActivity = .idle
+    }
 
-    func transferLogo() {
-        guard canTransfer, let jpeg = logoJPEG else { return }
-        isLogoBusy = true
-        transferProgress = 0
-        logoStatus = .info("Transferring image…")
+    func sendLogo() {
+        guard canSendLogo, let jpeg = logoJPEG else { return }
+        successReset?.cancel()
+        logoActivity = .transferring(progress: 0)
         logoService.transfer(jpeg: jpeg)
     }
 
     func deleteLogo() {
-        guard canDelete else { return }
-        isLogoBusy = true
-        transferProgress = nil
-        logoStatus = .info("Deleting…")
+        guard canDeleteLogo else { return }
+        successReset?.cancel()
+        logoActivity = .deleting
         logoService.deleteLogo()
     }
 
     private func finish(_ outcome: LogoTransferMachine.Outcome) {
-        isLogoBusy = false
-        transferProgress = nil
         switch outcome {
-        case .transferSucceeded: logoStatus = .success("Transfer success.")
-        case .transferFailed: logoStatus = .error("Transfer failed.")
-        case .deleteSucceeded: logoStatus = .success("File deleted.")
-        case .deleteFailed: logoStatus = .error("Delete failed.")
+        case .transferSucceeded:
+            showSuccess("Sent to \(DeviceIdentity.displayName)")
+        case .deleteSucceeded:
+            showSuccess("Removed from \(DeviceIdentity.displayName)")
+        case .transferFailed:
+            logoActivity = .idle
+            alert = Alert(
+                title: "The Logo Couldn’t Be Sent",
+                message: "The \(DeviceIdentity.displayName) didn’t accept the image. Make sure the controller stays connected, then try again.",
+                retry: { [weak self] in self?.sendLogo() }
+            )
+        case .deleteFailed:
+            logoActivity = .idle
+            alert = Alert(
+                title: "The Logo Couldn’t Be Removed",
+                message: "The \(DeviceIdentity.displayName) didn’t confirm the deletion. Try again.",
+                retry: { [weak self] in self?.deleteLogo() }
+            )
         }
+    }
+
+    private func showSuccess(_ message: String) {
+        logoActivity = .succeeded(message)
+        let reset = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, case .succeeded = self.logoActivity else { return }
+                self.logoActivity = .idle
+            }
+        }
+        successReset = reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: reset)
     }
 
     // MARK: Settings
 
     private func settingsChanged(from old: ControllerSettings) {
+        guard isLive else { return }
         store.save(settings)
         let changed = ControllerSetting.allCases.filter { old.deviceValue(for: $0) != settings.deviceValue(for: $0) }
         guard !changed.isEmpty, isConnected else { return }
-        let values = changed.map { ($0, settings.deviceValue(for: $0)) }
-        send(values, announce: false)
+        send(changed.map { ($0, settings.deviceValue(for: $0)) }, reportSuccess: false)
     }
 
-    func applyAllSettings(announce: Bool = true) {
-        send(ControllerSetting.allCases.map { ($0, settings.deviceValue(for: $0)) }, announce: announce)
+    func sendAllSettings(reportSuccess: Bool = true) {
+        send(ControllerSetting.allCases.map { ($0, settings.deviceValue(for: $0)) }, reportSuccess: reportSuccess)
     }
 
-    private func send(_ values: [(ControllerSetting, UInt8)], announce: Bool) {
+    func resetSettings() {
+        let software = settings.software
+        var defaults = ControllerSettings()
+        defaults.software = software
+        settings = defaults
+    }
+
+    private func send(_ values: [(ControllerSetting, UInt8)], reportSuccess: Bool) {
         let usb = self.usb
         usbQueue.async { [weak self] in
             var failure: Error?
@@ -174,14 +270,51 @@ final class AppModel: ObservableObject {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     if let failure {
-                        self.settingsStatus = .error(failure.localizedDescription)
-                    } else if announce {
-                        self.settingsStatus = .success("Settings sent to the controller.")
-                    } else {
-                        self.settingsStatus = .none
+                        self.alert = Alert(
+                            title: "Settings Couldn’t Be Sent",
+                            message: failure.localizedDescription,
+                            retry: { [weak self] in self?.sendAllSettings() }
+                        )
+                    } else if reportSuccess {
+                        NSSound(named: "Glass")?.play()
                     }
                 }
             }
         }
+    }
+
+    // MARK: Previews
+
+    /// A model that never touches IOKit, for SwiftUI previews.
+    static func preview(connected: Bool = true, software: DJSoftware = .seratoDJPro, withLogo: Bool = false) -> AppModel {
+        let model = AppModel(startDevices: false)
+        model.settings = ControllerSettings()
+        model.isConnected = connected
+        model.logoInterfaceAvailable = connected
+        model.firmwareVersion = connected ? "1.05" : nil
+        model.settings.software = software
+        if withLogo, let result = try? LogoImageEncoder.encode(image: previewArtwork()) {
+            model.logoPreview = result.preview
+            model.logoJPEG = result.jpegData
+            model.logoFileName = "My Logo.png"
+        }
+        return model
+    }
+
+    func previewActivity(_ activity: LogoActivity) -> AppModel {
+        logoActivity = activity
+        return self
+    }
+
+    private static func previewArtwork() -> CGImage {
+        let context = CGContext(data: nil, width: 480, height: 320, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let colors = [CGColor(red: 1, green: 0.45, blue: 0.1, alpha: 1), CGColor(red: 0.55, green: 0.1, blue: 0.9, alpha: 1)]
+        let gradient = CGGradient(colorsSpace: nil, colors: colors as CFArray, locations: [0, 1])!
+        context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 480, y: 320), options: [])
+        context.setFillColor(CGColor(gray: 1, alpha: 0.9))
+        context.fillEllipse(in: CGRect(x: 170, y: 90, width: 140, height: 140))
+        return context.makeImage()!
     }
 }

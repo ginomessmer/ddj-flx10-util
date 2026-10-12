@@ -8,6 +8,8 @@
 	<string>FLX10 Utility</string>
 	<key>CFBundleExecutable</key>
 	<string>FLX10Utility</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.ginomessmer.flx10-utility</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -23,7 +25,9 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.music</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>14.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Independent utility for the DDJ-FLX10. Not affiliated with AlphaTheta Corporation.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>

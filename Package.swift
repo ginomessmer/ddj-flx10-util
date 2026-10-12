@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "FLX10Utility",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .executable(name: "FLX10Utility", targets: ["FLX10Utility"]),
         .library(name: "FLX10Kit", targets: ["FLX10Kit"]),

@@ -1,6 +1,6 @@
 # FLX10 Utility
 
-A single native macOS app (SwiftUI, universal binary, macOS 13+) that replaces both
+A single native macOS app (SwiftUI, universal binary, macOS 14+) that replaces both
 **DDJ-FLX10 Setup.app** (controller utility settings) and **DDJ-FLX10_ImageTransferTool.app**
 (DJ logo upload) for the Pioneer DJ / AlphaTheta DDJ-FLX10. It needs neither the
 `DDJ-FLX10Setup.framework` nor the `AutoLauncherd` launch agent.
@@ -20,13 +20,21 @@ For development, use `swift run FLX10Utility` and `swift test`, or generate an X
 xcodegen generate && open FLX10Utility.xcodeproj
 ```
 
+Debug builds can render every pane to PNGs without screen-recording permission, which is
+useful for checking layout changes:
+
+```bash
+FLX10_SNAPSHOT_DIR=/tmp/flx10-shots swift run FLX10Utility
+```
+
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
 | `Sources/CFLX10USB` | C shim for vendor control requests through `IOUSBDeviceInterface` |
 | `Sources/FLX10Kit` | Protocol, transfer state machine, image encoder, settings model, IOKit transports |
-| `Sources/FLX10Utility` | SwiftUI app (DJ Logo, Controller, About tabs) |
+| `Sources/FLX10Utility` | SwiftUI app: sidebar window (General, DJ Logo, Jog Display, Performance, Recording), Controller menu, Settings window |
+| `scripts/make-icon.swift` | Renders `Resources/AppIcon.icns` |
 | `Tests/FLX10KitTests` | Packet framing, state machine, encoder and settings tests |
 
 ## Recovered protocol

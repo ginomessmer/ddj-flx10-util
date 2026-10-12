@@ -2,61 +2,121 @@ import FLX10Kit
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 0) {
-            ConnectionBanner()
-            Divider()
-            TabView {
-                LogoView()
-                    .tabItem { Label("DJ Logo", systemImage: "photo") }
-                SettingsView()
-                    .tabItem { Label("Controller", systemImage: "slider.horizontal.3") }
-                AboutView()
-                    .tabItem { Label("About", systemImage: "info.circle") }
-            }
-            .padding()
+        @Bindable var model = model
+        NavigationSplitView {
+            Sidebar()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+        } detail: {
+            detail
+                .navigationTitle(model.selectedPane?.title ?? "FLX10 Utility")
+                .navigationSubtitle(model.connectionDescription)
         }
-        .frame(width: 560, height: 560)
+        .alert(
+            model.alert?.title ?? "",
+            isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } }),
+            presenting: model.alert
+        ) { alert in
+            if let retry = alert.retry {
+                Button("Try Again") { retry() }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { alert in
+            Text(alert.message)
+        }
+        #if DEBUG
+        .task { DebugSnapshots.runIfRequested(model: model) }
+        #endif
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch model.selectedPane ?? .logo {
+        case .general: GeneralPane()
+        case .logo: LogoPane()
+        case .jogDisplay: JogDisplayPane()
+        case .performance: PerformancePane()
+        case .recording: RecordingPane()
+        }
     }
 }
 
-private struct ConnectionBanner: View {
-    @EnvironmentObject private var model: AppModel
+private struct Sidebar: View {
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(model.isConnected ? Color.green : Color.secondary.opacity(0.5))
-                .frame(width: 8, height: 8)
-            Text(model.isConnected ? "\(DeviceIdentity.displayName) connected" : "\(DeviceIdentity.displayName) not connected")
-                .font(.callout.weight(.medium))
-            Spacer()
-            if let firmware = model.firmwareVersion {
-                Text("Firmware \(firmware)")
-                    .font(.callout)
+        @Bindable var model = model
+        List(selection: $model.selectedPane) {
+            DeviceCard()
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
+
+            Section {
+                row(.general)
+                row(.logo)
+            }
+            Section("Controller") {
+                row(.jogDisplay)
+                row(.performance)
+                row(.recording)
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    private func row(_ pane: Pane) -> some View {
+        Label {
+            Text(pane.title)
+        } icon: {
+            PaneIcon(symbol: pane.symbol, tint: pane.tint)
+        }
+        .tag(pane)
+    }
+}
+
+/// The controller "account card" at the top of the sidebar.
+private struct DeviceCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: "dial.medium.fill")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(model.isConnected ? Color.accentColor : .secondary)
+                    .frame(width: 40, height: 40)
+                    .background(.quaternary, in: Circle())
+                Circle()
+                    .fill(model.isConnected ? Color.green : Color.secondary)
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().stroke(.background, lineWidth: 2))
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(DeviceIdentity.displayName)
+                    .font(.headline)
+                Text(model.isConnected ? "Connected" : "Not Connected")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(DeviceIdentity.displayName), \(model.isConnected ? "connected" : "not connected")")
     }
 }
 
-struct StatusText: View {
-    let status: AppModel.Status
+#Preview("Connected") {
+    ContentView()
+        .environment(AppModel.preview(withLogo: true))
+        .frame(width: 780, height: 560)
+}
 
-    var body: some View {
-        switch status {
-        case .none:
-            EmptyView()
-        case .info(let text):
-            Text(text).foregroundStyle(.secondary)
-        case .success(let text):
-            Label(text, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-        case .error(let text):
-            Label(text, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
-        }
-    }
+#Preview("Not connected") {
+    ContentView()
+        .environment(AppModel.preview(connected: false))
+        .frame(width: 780, height: 560)
 }
