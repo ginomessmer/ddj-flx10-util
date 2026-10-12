@@ -9,7 +9,8 @@ replaces both of the vendor's macOS tools in one native SwiftUI app:
 
 * **DDJ-FLX10 Setup** — jog ring color, time display, virtual deck mode, slip mode, Fader Start
   sync and REC OUT options
-* **DDJ-FLX10 Image Transfer Tool** — upload or remove the custom DJ logo shown on the jog displays
+* **DDJ-FLX10 Image Transfer Tool** — upload or remove the custom DJ logo shown on the jog displays,
+  with a small editor to fit the whole image or fill the display and pick the crop
 
 It needs neither the vendor's `DDJ-FLX10Setup.framework` nor its `AutoLauncherd` background agent.
 
@@ -135,6 +136,8 @@ By default (configurable) it re-sends them when the controller connects.
   traced UI bindings.
 * **Not carried over:** Fader Start value `0`, which the original sends only while its checkbox is
   disabled. The meaning of that disabled state is unknown.
+* **Added:** a Fill layout that covers the 240×240 display and crops the rest, with zoom and a
+  draggable crop. Fit, the default, matches the original's letterboxing.
 * **Changed:** if the quality-1.0 JPEG is over the size limit, this app lowers the quality step by
   step. The original fails instead.
 * **Simplified:** the original scales large images down in steps of 0.7 before the final fit.

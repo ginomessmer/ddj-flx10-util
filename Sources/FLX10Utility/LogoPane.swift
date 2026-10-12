@@ -4,6 +4,8 @@ import SwiftUI
 struct LogoPane: View {
     @Environment(AppModel.self) private var model
     @State private var isDropTargeted = false
+    @State private var dragStartOffset: CGPoint?
+    @State private var pinchStartZoom: Double?
 
     var body: some View {
         @Bindable var model = model
@@ -93,11 +95,32 @@ struct LogoPane: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.separator))
             .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+            .gesture(cropDrag, including: isCropping ? .all : .subviews)
+            .simultaneousGesture(cropPinch, including: isCropping ? .all : .subviews)
+            .onTapGesture(count: 2) { if isCropping { resetCrop() } }
+            .onContinuousHover { phase in
+                guard isCropping else { return }
+                switch phase {
+                case .active: (dragStartOffset == nil ? NSCursor.openHand : NSCursor.closedHand).set()
+                case .ended: NSCursor.arrow.set()
+                }
+            }
             .contextMenu {
+                Picker("Layout", selection: Binding(get: { model.logoLayout.mode }, set: { model.logoLayout.mode = $0 })) {
+                    Text("Fit").tag(LogoLayout.Mode.fit)
+                    Text("Fill").tag(LogoLayout.Mode.fill)
+                }
+                if isCropping {
+                    Button("Reset Crop") { resetCrop() }
+                }
+                Divider()
                 Button("Choose Another Image…") { model.chooseImage() }
                 Button("Clear") { model.clearImage() }
             }
             .accessibilityLabel("Logo preview")
+            .accessibilityHint(isCropping ? "Drag to move the crop. Double-click to reset." : "")
+
+            layoutEditor
 
             VStack(spacing: 3) {
                 Text(model.logoFileName ?? "")
@@ -131,6 +154,87 @@ struct LogoPane: View {
                 .foregroundStyle(.secondary)
         }
         .animation(.snappy, value: model.logoActivity)
+    }
+
+    // MARK: Layout editor
+
+    private var isCropping: Bool {
+        model.logoLayout.mode == .fill && !model.isLogoBusy
+    }
+
+    private var layoutEditor: some View {
+        @Bindable var model = model
+        return VStack(spacing: 10) {
+            Picker("Layout", selection: $model.logoLayout.mode) {
+                Label("Fit", systemImage: "rectangle.center.inset.filled").tag(LogoLayout.Mode.fit)
+                Label("Fill", systemImage: "rectangle.inset.filled").tag(LogoLayout.Mode.fill)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 200)
+            .help("Fit shows the whole image with black bars. Fill covers the display and crops the rest.")
+
+            if model.logoLayout.mode == .fill {
+                HStack(spacing: 8) {
+                    Image(systemName: "minus.magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Slider(value: $model.logoLayout.zoom, in: 1...LogoLayout.maxZoom)
+                        .frame(width: 160)
+                        .accessibilityLabel("Zoom")
+                    Image(systemName: "plus.magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Button {
+                        resetCrop()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Reset crop")
+                    .disabled(model.logoLayout == LogoLayout(mode: .fill))
+                }
+                Text("Drag the image to choose what’s shown.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .disabled(model.isLogoBusy)
+        .animation(.snappy, value: model.logoLayout.mode)
+    }
+
+    private var cropDrag: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                guard isCropping, let source = model.logoSource else { return }
+                let start = dragStartOffset ?? model.logoLayout.offset
+                if dragStartOffset == nil {
+                    dragStartOffset = start
+                    NSCursor.closedHand.set()
+                }
+                model.logoLayout.offset = model.logoLayout.offset(
+                    afterDragging: value.translation, from: start,
+                    imageWidth: source.width, imageHeight: source.height,
+                    canvasSide: Double(LogoProtocol.displaySize)
+                )
+            }
+            .onEnded { _ in
+                dragStartOffset = nil
+                if isCropping { NSCursor.openHand.set() }
+            }
+    }
+
+    private var cropPinch: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                guard isCropping else { return }
+                let start = pinchStartZoom ?? model.logoLayout.zoom
+                pinchStartZoom = start
+                model.logoLayout.zoom = start * value.magnification
+            }
+            .onEnded { _ in pinchStartZoom = nil }
+    }
+
+    private func resetCrop() {
+        model.logoLayout = LogoLayout(mode: .fill)
     }
 
     private var detailText: String {
@@ -196,6 +300,12 @@ struct LogoPane: View {
     LogoPane()
         .environment(AppModel.preview(withLogo: true))
         .frame(width: 560, height: 520)
+}
+
+#Preview("Fill & crop") {
+    LogoPane()
+        .environment(AppModel.preview(withLogo: true, layout: LogoLayout(mode: .fill, zoom: 1.5, offset: CGPoint(x: 0.5, y: 0))))
+        .frame(width: 560, height: 600)
 }
 
 #Preview("Sending") {
