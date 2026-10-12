@@ -1,9 +1,46 @@
 # FLX10 Utility
 
-A single native macOS app (SwiftUI, universal binary, macOS 14+) that replaces both
-**DDJ-FLX10 Setup.app** (controller utility settings) and **DDJ-FLX10_ImageTransferTool.app**
-(DJ logo upload) for the Pioneer DJ / AlphaTheta DDJ-FLX10. It needs neither the
-`DDJ-FLX10Setup.framework` nor the `AutoLauncherd` launch agent.
+[![CI](https://github.com/ginomessmer/ddj-flx-10-util/actions/workflows/ci.yml/badge.svg)](https://github.com/ginomessmer/ddj-flx-10-util/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Platform: macOS 14+](https://img.shields.io/badge/macOS-14%2B-lightgrey.svg)
+
+An unofficial, open-source macOS app for the Pioneer DJ / AlphaTheta **DDJ-FLX10** controller. It
+replaces both of the vendor's macOS tools in one native SwiftUI app:
+
+* **DDJ-FLX10 Setup** — jog ring color, time display, virtual deck mode, slip mode, Fader Start
+  sync and REC OUT options
+* **DDJ-FLX10 Image Transfer Tool** — upload or remove the custom DJ logo shown on the jog displays
+
+It needs neither the vendor's `DDJ-FLX10Setup.framework` nor its `AutoLauncherd` background agent.
+
+> [!WARNING]
+> **Unofficial software, use at your own risk.** This project is not made, endorsed or supported by
+> Pioneer DJ or AlphaTheta Corporation. It talks to your controller using a protocol recovered by
+> reverse engineering, which has **not been verified against every firmware version**. It is
+> provided **as is, without warranty of any kind**, and the authors accept **no liability** for any
+> damage to your hardware, data or performances. Using it may affect your manufacturer warranty or
+> support. See [Disclaimer](#disclaimer).
+
+![DJ Logo pane](docs/screenshots/logo.png)
+
+| Jog Display | Performance | General |
+| --- | --- | --- |
+| ![Jog Display](docs/screenshots/jogDisplay.png) | ![Performance](docs/screenshots/performance.png) | ![General](docs/screenshots/general.png) |
+
+## Install
+
+Download `FLX10-Utility` from the latest [CI run](https://github.com/ginomessmer/ddj-flx-10-util/actions/workflows/ci.yml)
+(or build it yourself, below) and move **FLX10 Utility.app** to `/Applications`.
+
+The app is ad-hoc signed, not notarized. On first launch macOS will refuse to open it; right-click
+the app and choose **Open**, or allow it in **System Settings › Privacy & Security**.
+
+No driver or kernel extension is installed. The app is not sandboxed because it needs direct USB
+and HID access to the controller.
+
+## Build
+
+Requires Xcode 16 or later.
 
 ```bash
 ./scripts/build-app.sh
@@ -26,6 +63,9 @@ useful for checking layout changes:
 ```bash
 FLX10_SNAPSHOT_DIR=/tmp/flx10-shots swift run FLX10Utility
 ```
+
+Add `FLX10_SNAPSHOT_DEMO=1` to render from the demo model (connected, sample logo), which is how
+`docs/screenshots` is produced.
 
 ## Layout
 
@@ -104,4 +144,38 @@ By default (configurable) it re-sends them when the controller connects.
 * **Not carried over:** the original's rotation transform (a sin/cos step near the encoder) was
   not fully traced. EXIF orientation is applied instead.
 
-Not affiliated with AlphaTheta Corporation.
+## Contributing
+
+Issues and pull requests are welcome. Reports from people who have tested with real hardware —
+including firmware version and what worked or didn't — are especially useful, since the protocol
+was recovered statically. Please run `swift test` before opening a pull request.
+
+## Disclaimer
+
+This is an independent, unofficial project. It is **not affiliated with, authorized, endorsed or
+supported by Pioneer DJ, AlphaTheta Corporation** or any of their subsidiaries. Do not contact them
+for support with this software.
+
+The software is provided **"as is", without warranty of any kind**, express or implied, including
+but not limited to the warranties of merchantability, fitness for a particular purpose and
+non-infringement. **In no event shall the authors or contributors be liable** for any claim,
+damages or other liability — including damage to or malfunction of your controller, loss of data,
+interrupted performances or loss of income — arising from, out of or in connection with the
+software or its use. You use it entirely at your own risk.
+
+The device protocol was determined by analysing the vendor's freely downloadable macOS utilities,
+for the purpose of interoperability with hardware the author owns. This repository contains no
+vendor code, binaries, images or other copyrighted assets. Sending commands to hardware with
+unofficial software may void or affect your manufacturer warranty; check your warranty terms before
+use.
+
+## Trademarks
+
+Pioneer DJ, AlphaTheta, DDJ-FLX10 and rekordbox are trademarks or registered trademarks of
+AlphaTheta Corporation. Serato DJ Pro is a trademark of Serato Limited. All other trademarks are
+the property of their respective owners. They are used here only to identify the hardware and
+software this project interoperates with; no endorsement is implied.
+
+## License
+
+[MIT](LICENSE) © 2026 Gino Messmer

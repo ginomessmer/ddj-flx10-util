@@ -5,7 +5,18 @@ import SwiftUI
 @main
 struct FLX10UtilityApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = AppModel()
+    @State private var model: AppModel
+
+    init() {
+        #if DEBUG
+        // FLX10_SNAPSHOT_DEMO=1 renders snapshots from the preview model (connected, sample logo).
+        if ProcessInfo.processInfo.environment["FLX10_SNAPSHOT_DEMO"] != nil {
+            _model = State(initialValue: .preview(withLogo: true))
+            return
+        }
+        #endif
+        _model = State(initialValue: AppModel())
+    }
 
     var body: some Scene {
         Window("FLX10 Utility", id: "main") {

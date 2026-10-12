@@ -27,7 +27,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Independent utility for the DDJ-FLX10. Not affiliated with AlphaTheta Corporation.</string>
+	<string>© 2026 Gino Messmer. MIT License. Unofficial software, not affiliated with AlphaTheta Corporation. Provided as is, without warranty of any kind.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>
